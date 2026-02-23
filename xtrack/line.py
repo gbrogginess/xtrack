@@ -3539,8 +3539,8 @@ class Line:
             tracking, and then every `update_every` turns afterwards.
         **kwargs : dict, optional
             Required if an element is provided. Keyword arguments are
-            passed to the `line.insert_element()` method according to
-            `line.insert_element(element=element, **kwargs)`.
+            passed to the `line.insert()` method according to
+            `line.insert(obj=element, **kwargs)`.
 
         Raises
         ------
@@ -3585,7 +3585,7 @@ class Line:
             Additional keyword arguments passed to the twiss method.
 
         """
-        self._method_incompatible_with_compose
+        self._method_incompatible_with_compose()
 
         all_kwargs = locals().copy()
         all_kwargs.pop('self')
