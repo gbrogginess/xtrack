@@ -9,7 +9,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from contextlib import contextmanager
 from pprint import pformat
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Container
 from warnings import warn
 
 import numpy as np
@@ -34,6 +34,9 @@ from .beam_elements.elements import (_EDGE_MODEL_TO_INDEX,
                                      _MODEL_TO_INDEX_CURVED,
                                      _MODEL_TO_INDEX_DRIFT)
 from .beam_elements.slice_base import ID_RADIATION_FROM_PARENT
+from .builder import (_all_places, _flatten_components,
+                      _generate_element_names_with_drifts,
+                      _resolve_s_positions, _sort_places)
 from .footprint import Footprint, _footprint_with_linear_rescale
 from .general import _print
 from .internal_record import (start_internal_logging_for_elements_of_type,
@@ -353,8 +356,6 @@ class Line:
         line : Line
             Line object.
         """
-        warn('`Line.from_json` is deprecated. Use `xt.load` instead.', FutureWarning)
-
         dct = json_utils.load(file)
 
         if 'line' in dct.keys():
@@ -500,32 +501,8 @@ class Line:
 
     @classmethod
     def from_sixinput(cls, sixinput, classes=()):
-        """
-        Build a Line from a Sixtrack input object. N.B. This is a convenience
-        function that calls sixinput.generate_xtrack_line(). It is used only for
-        testing and will be removed in future versions.
-
-        Parameters
-        ----------
-
-        sixinput : SixInput
-            Sixtrack input object
-        classes : tuple
-            Tuple of classes to be used for the elements. If empty, the default
-            classes are used.
-
-        Returns
-        -------
-        line : Line
-            Line object.
-
-        """
-
-        log.warning("\n"
-            "WARNING: xtrack.Line.from_sixinput(sixinput) will be removed in future versions.\n"
-            "Please use sixinput.generate_xtrack_line()\n")
-        line = sixinput.generate_xtrack_line(classes=classes)
-        return line
+        """``Line.from_sixinput`` has been removed in favour of ``sixinput.generate_xtrack_line()``."""
+        raise NotImplementedError(__doc__)
 
     @classmethod
     def from_madx_sequence(
@@ -548,7 +525,6 @@ class Line:
         enable_layout_data=False,
         enable_thick_kickers=True
     ):
-
         """
         Build a line from a MAD-X sequence.
 
@@ -592,7 +568,6 @@ class Line:
         -------
         line : Line
             Line object.
-
         """
 
         if not enable_thick_kickers:
@@ -2385,7 +2360,7 @@ class Line:
         return get_non_linear_chromaticity(self, delta0_range, num_delta,
                                            fit_order, **kwargs)
 
-    def get_length(self):
+    def get_length(self) -> float:
 
         '''Get total length of the line'''
 
@@ -2460,7 +2435,7 @@ class Line:
 
     def _elements_intersecting_s(
             self,
-            s: List[float],
+            s: Iterable[float],
             s_tol=1e-6,
     ) -> Dict[str, List[float]]:
         """Given a list of s positions, return a list of elements 'cut' by s.
@@ -2523,7 +2498,7 @@ class Line:
 
         return cuts_for_element
 
-    def cut_at_s(self, s: List[float], s_tol=1e-6, return_slices=False):
+    def cut_at_s(self, s: Iterable[float], s_tol=1e-6, return_slices=False):
         """Slice the line so that positions in s never fall inside an element."""
 
         self._method_incompatible_with_compose()
@@ -2619,9 +2594,11 @@ class Line:
 
     def insert(self, what, obj=None, at=None, from_=None, anchor=None,
                from_anchor=None, s_tol=1e-10):
-
         """
         Insert elements in the line.
+
+        If there are multiple valid options for the insertion (which is sometimes the
+        case for thin elements), the first suitable place will usually be chosen.
 
         Parameters
         ----------
@@ -2632,8 +2609,11 @@ class Line:
             Object to be inserted (if not already present in the environment).
             It can be specified only when `what` is a string.
         at : str or float (optional)
-            Location of the insertion (s position). It can be absolute or relative
-            to another element (specified by `from_`).
+            Location of the insertion. If a string is given, it will first be interpreted
+            as a name of the element in the line: if one exits the behaviour will be the
+            same as with ``at=0, from_=at``. Otherwise, ``at`` will be treated as an expression
+            evaluating to the s position. The s positions can be absolute or relative to
+            another element (specified by `from_`).
         from_ : str (optional)
             Element with respect to which `at` is defined.
         anchor : str (optional)
@@ -2688,11 +2668,14 @@ class Line:
         self.discard_tracker()
         env = self.env
 
-        _all_places = xt.builder._all_places
-        _resolve_s_positions = xt.builder._resolve_s_positions
-        _flatten_components = xt.builder._flatten_components
-        _sort_places = xt.builder._sort_places
-        _generate_element_names_with_drifts = xt.builder._generate_element_names_with_drifts
+        if at in self.element_names:
+            if from_ is not None:
+                raise ValueError(
+                    'If `at` is an element name in the line, it represents an absolute position, '
+                    'so no `from_` can be given'
+                )
+            from_ = at
+            at = 0
 
         need_place_instantiation = False
         for nn, vv in {'at': at, 'from_': from_, 'anchor': anchor,
@@ -3786,16 +3769,15 @@ class Line:
         elif isinstance(keep, str):
             keep = [keep]
 
-        newline = Line(elements=[], element_names=[])
+        newline = self.env.new_line()
 
         for ee, nn in zip(self._elements, self.element_names):
             if isinstance(ee, Marker) and nn not in keep:
                 continue
-            newline.append_element(ee, nn)
+            newline.append(nn)
 
         if inplace:
             self.element_names = newline.element_names
-            self._element_dict.update(newline._element_dict)
             return self
         else:
             return newline
@@ -3832,7 +3814,7 @@ class Line:
         elif isinstance(keep, str):
             keep = [keep]
 
-        newline = Line(elements=[], element_names=[])
+        newline = self.env.new_line()
 
         for ee, nn in zip(self._elements, self.element_names):
             if (isinstance(ee, Multipole) and nn not in keep and
@@ -3842,18 +3824,16 @@ class Line:
                         + list(ctx2np(ee.knl)) + list(ctx2np(ee.ksl)))
                 if np.sum(np.abs(np.array(aux))) == 0.0:
                     continue
-            newline.append_element(ee, nn)
+            newline.append(nn)
 
         if inplace:
             self.element_names = newline.element_names
-            self._element_dict.update(newline._element_dict)
             return self
         else:
             return newline
 
     def remove_zero_length_drifts(self, inplace=True, keep=None):
-
-        '''
+        """
         Remove zero length drifts from the line
 
         Parameters
@@ -3868,8 +3848,7 @@ class Line:
         -------
         line : Line
             Line with zero length drifts removed
-
-        '''
+        """
         self._method_incompatible_with_compose()
         if not _vars_unused(self):
             raise NotImplementedError('`remove_zero_length_drifts` not'
@@ -3883,24 +3862,22 @@ class Line:
         elif isinstance(keep, str):
             keep = [keep]
 
-        newline = Line(elements=[], element_names=[])
+        newline = self.env.new_line()
 
         for ee, nn in zip(self._elements, self.element_names):
             if _is_drift(ee, self) and nn not in keep:
                 if _length(ee, self) == 0.0:
                     continue
-            newline.append_element(ee, nn)
+            newline.append(nn)
 
         if inplace:
             self.element_names = newline.element_names
-            self._element_dict.update(newline._element_dict)
             return self
         else:
             return newline
 
     def merge_consecutive_drifts(self, inplace=True, keep=None):
-
-        '''
+        """
         Merge consecutive drifts into a single drift
 
         Parameters
@@ -3915,8 +3892,7 @@ class Line:
         -------
         line : Line
             Line with consecutive drifts merged
-
-        '''
+        """
         self._method_incompatible_with_compose()
         assert inplace is True, 'Only inplace is supported for now'
 
@@ -3932,30 +3908,25 @@ class Line:
         elif isinstance(keep, str):
             keep = [keep]
 
-        newline = Line(elements=[], element_names=[])
+        newline = self.env.new_line()
 
         for ii, (ee, nn) in enumerate(zip(self._elements, self.element_names)):
             if ii == 0:
-                newline.append_element(ee, nn)
+                newline.append(nn)
                 continue
 
-            this_ee = ee if inplace else ee.copy()
             if _is_drift(ee, self) and not nn in keep:
                 prev_nn = newline.element_names[-1]
                 prev_ee = newline._element_dict[prev_nn]
                 if _is_drift(prev_ee, self) and not prev_nn in keep:
                     prev_ee.length += ee.length
                 else:
-                    newline.append_element(this_ee, nn)
+                    newline.append(nn)
             else:
-                newline.append_element(this_ee, nn)
+                newline.append(nn)
 
-        if inplace:
-            self.element_names = newline.element_names
-            self._element_dict.update(newline._element_dict)
-            return self
-        else:
-            return newline
+        self.element_names = newline.element_names
+        return self
 
     def remove_redundant_apertures(self, inplace=True, keep=None,
                                   drifts_that_need_aperture=[]):
@@ -4259,11 +4230,11 @@ class Line:
         elif isinstance(keep, str):
             keep = [keep]
 
-        newline = Line(elements=[], element_names=[])
+        newline = self.env.new_line()
 
         for ee, nn in zip(self._elements, self.element_names):
             if len(newline.element_names) == 0:
-                newline.append_element(ee, nn)
+                newline.append(nn)
                 continue
 
             if isinstance(ee, Multipole) and nn not in keep and not ee.isthick:
@@ -4271,33 +4242,33 @@ class Line:
                 prev_ee = newline._element_dict[prev_nn]
                 if (isinstance(prev_ee, Multipole)
                     and not prev_ee.isthick
-                    and prev_ee.hxl==ee.hxl==0
+                    and prev_ee.hxl == ee.hxl == 0
                     and prev_nn not in keep
-                    ):
-
-                    oo=max(len(prev_ee.knl), len(prev_ee.ksl),
+                ):
+                    oo = max(len(prev_ee.knl), len(prev_ee.ksl),
                            len(ee.knl), len(ee.ksl))
-                    knl=np.zeros(oo,dtype=float)
-                    ksl=np.zeros(oo,dtype=float)
-                    for ii,kk in enumerate(prev_ee._xobject.knl):
-                        knl[ii]+=kk
-                    for ii,kk in enumerate(ee._xobject.knl):
-                        knl[ii]+=kk
-                    for ii,kk in enumerate(prev_ee._xobject.ksl):
-                        ksl[ii]+=kk
-                    for ii,kk in enumerate(ee._xobject.ksl):
-                        ksl[ii]+=kk
+                    knl = np.zeros(oo,dtype=float)
+                    ksl = np.zeros(oo,dtype=float)
+                    for ii, kk in enumerate(prev_ee._xobject.knl):
+                        knl[ii] += kk
+                    for ii, kk in enumerate(ee._xobject.knl):
+                        knl[ii] += kk
+                    for ii, kk in enumerate(prev_ee._xobject.ksl):
+                        ksl[ii] += kk
+                    for ii, kk in enumerate(ee._xobject.ksl):
+                        ksl[ii] += kk
                     newee = Multipole(
-                            knl=knl, ksl=ksl, hxl=prev_ee.hxl,
-                            length=prev_ee.length,
-                            radiation_flag=prev_ee.radiation_flag)
+                        knl=knl, ksl=ksl, hxl=prev_ee.hxl,
+                        length=prev_ee.length,
+                        radiation_flag=prev_ee.radiation_flag,
+                    )
                     prev_nn += ('_' + nn)
-                    newline._element_dict[prev_nn] = newee
+                    self.env.elements[prev_nn] = newee
                     newline.element_names[-1] = prev_nn
                 else:
-                    newline.append_element(ee, nn)
+                    newline.append(nn)
             else:
-                newline.append_element(ee, nn)
+                newline.append(nn)
 
         if inplace:
             self.element_names = newline.element_names

@@ -2378,7 +2378,7 @@ class UniformSolenoid(_HasKnlKsl, _HasIntegrator, BeamElement):
     _internal_record_class = SynchrotronRadiationRecord
 
     _extra_c_sources = [
-        '#include <beam_elements/elements_src/slnd.h>',
+        '#include <beam_elements/elements_src/uniform_solenoid.h>',
     ]
 
     def __init__(self, **kwargs):

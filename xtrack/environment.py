@@ -865,7 +865,6 @@ class Environment:
             Environment object.
 
         """
-        warn('`Environment.from_json` is deprecated, use `xt.load` instead', FutureWarning)
         dct = xt.json.load(file)
         return cls.from_dict(dct, **kwargs)
 
@@ -2012,7 +2011,6 @@ class EnvVars:
             format: Literal['json', 'madx', 'python'] = None,
             timeout=5.,
         ):
-
         if isinstance(file, Path):
             file = str(file)
 
@@ -2040,7 +2038,7 @@ class EnvVars:
             ddd = xt.json.load(file=file, string=string)
             self.update(ddd, default_to_zero=True)
         elif format == 'madx':
-            return self.load_madx(file, string)
+            return self._load_madx(file, string)
         elif format == 'python':
             if string is not None:
                 raise NotImplementedError('Loading from string not implemented for python format')
@@ -2164,17 +2162,22 @@ class EnvVars:
         self.__dict__.update(state)
         self.vars_to_update = WeakSet()
 
+    def load_madx(self, filename=None, string=None):
+        """Deprecated: see `_load_madx` instead."""
+        warn('EnvVars.load_madx is deprecated, use `load` instead.', FutureWarning)
+        self._load_madx(filename=filename, string=string)
+
     def set_from_madx_file(self, filename=None, string=None):
-        """Deprecated: see `load_madx` instead."""
-        warn('EnvVars.set_from_madx_file is deprecated, use `load_madx` instead.', FutureWarning)
-        self.load_madx(filename=filename, string=string)
+        """Deprecated: see `_load_madx` instead."""
+        warn('EnvVars.set_from_madx_file is deprecated, use `load` instead.', FutureWarning)
+        self._load_madx(filename=filename, string=string)
 
     def load_madx_optics_file(self, filename=None, string=None):
-        """Deprecated: see `load_madx` instead."""
-        warn('EnvVars.load_madx_optics_file is deprecated, use `load_madx` instead.', FutureWarning)
-        self.load_madx(filename=filename, string=string)
+        """Deprecated: see `_load_madx` instead."""
+        warn('EnvVars.load_madx_optics_file is deprecated, use `load` instead.', FutureWarning)
+        self._load_madx(filename=filename, string=string)
 
-    def load_madx(self, filename=None, string=None):
+    def _load_madx(self, filename=None, string=None):
         """
         Set variables values of expression from a MAD-X file.
 

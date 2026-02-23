@@ -380,7 +380,8 @@ def twiss_line(line, particle_ref=None, method=None,
         - `T_rev`: measured revolution period [s]
 
     """
-    warn('`at_s` keyword is deprecated and will be removed in future versions.', FutureWarning)
+    if at_s is not None:
+        warn('`at_s` keyword is deprecated and will be removed in future versions.', FutureWarning)
 
     input_kwargs = locals().copy()
 
