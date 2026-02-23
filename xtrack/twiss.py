@@ -3697,6 +3697,13 @@ class TwissTable(Table):
                default_column_width=None, float_precision=8,
                numeric_column_width=16, column_formats=None,
                column_widths=None):
+
+        if exclude is None:
+            exclude = []
+
+        if 'completed_init' in self.keys():
+            exclude.append('completed_init')
+
         super().to_tfs(
             file,
             include=include,
