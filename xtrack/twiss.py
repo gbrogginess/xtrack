@@ -381,7 +381,11 @@ def twiss_line(line, particle_ref=None, method=None,
 
     """
     if at_s is not None:
-        warn('`at_s` keyword is deprecated and will be removed in future versions.', FutureWarning)
+        warn('`at_s` keyword is deprecated and will be removed in future versions. \n'
+        'The same functionality can be achieved making a shallow copy of the line '
+        '(e.g. `line_copy = line.copy(shallow=True)`), using the`line.cut_at_s(...)` '
+        ' functionality and then calling line_copy.twiss(...) on the cut line.',
+        FutureWarning)
 
     input_kwargs = locals().copy()
 
