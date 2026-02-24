@@ -117,8 +117,8 @@ def test_twiss_zeta0_delta0(test_context):
     z1 = 1e-4
     z2 = -1e-4
 
-    tw1 = line.twiss(zeta0=z1).to_pandas()
-    tw2 = line.twiss(zeta0=z2).to_pandas()
+    tw1 = line.twiss4d(zeta0=z1).to_pandas()
+    tw2 = line.twiss4d(zeta0=z2).to_pandas()
 
     tw1.set_index('name', inplace=True)
     tw2.set_index('name', inplace=True)
